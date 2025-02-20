@@ -1,0 +1,180 @@
+name: gerencie-service
+
+volumes:
+  gerencie_db_data: {}
+
+services:
+  pedidos-ms:
+    image: pedido-local
+    environment:
+      PEDIDOS_PROFILE: dev
+      PEDIDOS_API_PORT: 8081
+      PEDIDOS_BROKER_HOST: kafka0
+      PEDIDOS_BROKER_PORT: 9092
+      PRODUTO_DB_NAME: pedidosdb
+      PEDIDOS_DB_USER: postgres
+      PEDIDOS_DB_PASSWORD: postgres
+      PEDIDOS_DB_HOST: postgresql://db
+      PEDIDOS_DB_PORT: 5432
+      PEDIDOS_CLIENTE_SERVICE_HOST: cliente-ms:8082
+      PEDIDOS_CATALOGO_SERVICE_HOST: produto-ms:8083
+      PORT: 8081
+    networks:
+      - gerencie-service-net
+    ports:
+      - "8081:8081"
+    depends_on:
+      kafka0:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  produto-ms: 
+    image: produto-local
+    environment:
+      PRODUTO_PROFILE: dev
+      PRODUTO_API_PORT: 8083
+      PRODUTO_BROKER_HOST: kafka0
+      PRODUTO_BROKER_PORT: 9092
+      PRODUTO_DB_NAME: produtosdb
+      PRODUTO_DB_USER: postgres
+      PRODUTO_DB_PASSWORD: postgres
+      PRODUTO_DB_HOST: postgresql://db
+      PRODUTO_DB_PORT: 5432
+      PORT: 8083
+    networks:
+      - gerencie-service-net
+    # volumes:
+    #   - ./files/**:/app/files
+    ports:
+      - "8083:8083"
+    depends_on:
+      kafka0:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  cliente-ms:
+    image: cliente-local
+    environment:
+      CLIENTES_PORT: 8082
+      CLIENTES_DB_NAME: clientesdb
+      CLIENTES_DB_HOST: postgresql://db
+      CLIENTES_DB_PORT: 5432
+      CLIENTES_DB_USER: postgres
+      CLIENTES_DB_PASSWORD: postgres
+      PORT: 8082
+    networks:
+      - gerencie-service-net
+    ports:
+      - "8082:8082"
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+  logistica-ms: 
+    image: logistica-local
+    environment:
+      LOGISTICA_PROFILE: dev
+      LOGISTICA_API_PORT: 8084
+      LOGISTICA_BROKER_HOST: kafka0
+      LOGISTICA_BROKER_PORT: 9092
+      LOGISTICA_DB_NAME: logisticadb
+      LOGISTICA_DB_USER: postgres
+      LOGISTICA_DB_PASSWORD: postgres
+      LOGISTICA_DB_HOST: postgresql://db
+      LOGISTICA_DB_PORT: 5432
+      PORT: 8084
+    networks:
+      - gerencie-service-net
+    ports:
+      - "8084:8084"
+    depends_on:
+      kafka0:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17
+    volumes:
+      - gerencie_db_data:/var/lib/postgresql
+      - ./create-databases.sql:/docker-entrypoint-initdb.d/create-databases.sql
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pedidosdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pedidosdb"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    networks:
+      - gerencie-service-net
+    ports:
+      - '5432:5432'
+
+  kafka0:
+    image: "confluentinc/cp-enterprise-kafka:5.2.1"
+    ports:
+      - '9092:9092'
+      - '29094:29094'
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - gerencie-service-net
+    environment:
+      KAFKA_BROKER_ID: 0
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://kafka0:29092,CONSUMER://kafka0:9092
+      # ,KAFKA_UI://kafka0:29094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka0:29092,CONSUMER://kafka0:9092
+      # ,KAFKA_UI://kafka0:29094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONSUMER:PLAINTEXT,LISTENER_ALICE:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONFLUENT_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.apache.kafka=ERROR,kafka=ERROR,kafka.cluster=ERROR,kafka.controller=ERROR,kafka.coordinator=ERROR,kafka.log=ERROR,kafka.server=ERROR,kafka.zookeeper=ERROR,state.change.logger=ERROR
+      KAFKA_LOG4J_ROOT_LOGLEVEL: ERROR
+    volumes:
+      - ./create-topics.sh:/scripts/create-topics.sh  # Mount the directory containing the script
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: |
+      "
+      /etc/confluent/docker/run & 
+      /scripts/create-topics.sh
+      wait
+      "
+    healthcheck:
+      test: ["CMD", "cub", "kafka-ready", "-b", "kafka0:9092", "1", "60"]
+      interval: 10s
+      timeout: 30s
+      retries: 10
+    # healthcheck:
+    #   test: kafka-topics.sh --list --bootstrap-server kafka0:9092 || exit 1
+    #   interval: 3s
+    #   timeout: 30s
+    #   retries: 6
+
+  zookeeper:
+    image: 'bitnami/zookeeper:latest'
+    ports:
+      - '2181:2181'
+    networks:
+      - gerencie-service-net
+    healthcheck:
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_LOG_LEVEL=ERROR
+
+networks:
+  gerencie-service-net:
+    driver: bridge
