@@ -19,8 +19,8 @@ docker-compose up -d
 
 
 Link dos repositórios dos microsserviços:
-* (pedido-ms)[https://github.com/caio303/pedidos-ms]
-* (produto-ms)[https://github.com/Rafaelgamo/produto-ms]
-* (logistica-ms)[https://github.com/caio303/logistica-ms]
-* (cliente-ms)[https://github.com/caio303/cliente-service]
+* [pedido-ms](https://github.com/caio303/pedidos-ms)
+* [produto-ms](https://github.com/Rafaelgamo/produto-ms)
+* [logistica-ms](https://github.com/caio303/logistica-ms)
+* [cliente-ms](https://github.com/caio303/cliente-service)
 
